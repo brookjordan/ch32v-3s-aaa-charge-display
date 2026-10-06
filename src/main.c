@@ -1,4 +1,5 @@
 #include "ch32v00x.h"
+#include "lcd.h"
 #include <stdio.h>
 
 // Configuration variables
@@ -150,32 +151,45 @@ int main(void) {
     
     uart_init();
     adc_init();
+    lcd_init();
     
     uart_puts("CH32V003 Battery Monitor\r\n");
     
     uint32_t sample_counter = 0;
+    uint32_t refresh_counter = 0;
     
     while(1) {
-        // Take ADC sample at 10Hz
-        uint16_t sample = adc_read_single();
-        uint16_t adc_smooth = get_adc_smooth(sample);
-        sample_counter++;
+        // LCD refresh at ~300Hz (every 3.3ms)
+        if(refresh_counter % 33 == 0) {
+            lcd_refresh();
+        }
         
-        // Print at configured interval
-        if(sample_counter % PRINT_INTERVAL_SAMPLES == 0) {
+        // Take ADC sample at 10Hz
+        if(refresh_counter % 1000 == 0) {
+            uint16_t sample = adc_read_single();
+            uint16_t adc_smooth = get_adc_smooth(sample);
+            sample_counter++;
             
             // Linear interpolation using calibration points
             uint32_t battery_mv = VOLTAGE_B + ((adc_smooth - RAW_B) * (VOLTAGE_A - VOLTAGE_B)) / (RAW_A - RAW_B);
             
-            uart_puts("Raw=");
-            print_number(sample);
-            uart_puts(" Smooth=");
-            print_number(adc_smooth);
-            uart_puts(" Battery=");
-            print_number(battery_mv);
-            uart_puts("mV\r\n");
+            // Display voltage on LCD (in volts * 100, e.g., 3.65V shows as 365)
+            uint16_t display_value = battery_mv / 10;
+            lcd_display_number(display_value);
+            
+            // Print at configured interval
+            if(sample_counter % PRINT_INTERVAL_SAMPLES == 0) {
+                uart_puts("Raw=");
+                print_number(sample);
+                uart_puts(" Smooth=");
+                print_number(adc_smooth);
+                uart_puts(" Battery=");
+                print_number(battery_mv);
+                uart_puts("mV\r\n");
+            }
         }
         
-        delay_ms(1000 / ADC_SAMPLE_RATE_HZ); // Configurable sample rate
+        refresh_counter++;
+        delay_ms(1); // 1ms base timing
     }
 }
